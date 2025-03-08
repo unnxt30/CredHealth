@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -8,11 +8,31 @@ import {
   Image,
   TouchableOpacity,
   useColorScheme,
+  Button,
+  Animated,
+  Alert,
 } from 'react-native';
-import { Shield, Award, TrendingUp, FileText, ArrowRight, Menu } from 'react-native-feather';
+import { Shield, Award, TrendingUp, FileText, ArrowRight, Menu, User } from 'react-native-feather';
+import ProfileDashboard from './ProfileDashboard';
+
+export interface UserData {
+  name: string;
+  email: string;
+  profilePic: string;
+}
 
 const App = () => {
   const isDarkMode = useColorScheme() === 'dark';
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [isSignedIn, setIsSignedIn] = useState(false);
+  const [currentScreen, setCurrentScreen] = useState('home');
+
+  // Mock user data
+  const [userData, setUserData] = useState<UserData>({
+    name: 'Unnat Sharma',
+    email: 'unnat.sharma@example.com',
+    profilePic: 'https://randomuser.me/api/portraits/men/32.jpg',
+  });
 
   // Features data
   const features = [
@@ -42,6 +62,49 @@ const App = () => {
     },
   ];
 
+  // Menu options
+  const menuOptions = [
+    { title: 'My Policies', onPress: () => console.log('My Policies pressed') },
+    { title: 'Claims', onPress: () => console.log('Claims pressed') },
+    {
+      title: 'Profile',
+      onPress: () => {
+        setCurrentScreen('profile');
+        setMenuOpen(false);
+      },
+    },
+    { title: 'Settings', onPress: () => console.log('Settings pressed') },
+  ];
+
+  const toggleMenu = () => {
+    setMenuOpen(!menuOpen);
+  };
+
+  const handleSignIn = () => {
+    setIsSignedIn(true);
+    Alert.alert('Welcome', `Signed in as ${userData.name}`);
+  };
+
+  const handleSignOut = () => {
+    setIsSignedIn(false);
+    Alert.alert('Signed Out', 'You have been signed out');
+  };
+
+  const handleUpdateProfile = (updatedUserData: UserData) => {
+    setUserData(updatedUserData);
+  };
+
+  // Render the appropriate screen
+  if (currentScreen === 'profile' && isSignedIn) {
+    return (
+      <ProfileDashboard
+        userData={userData}
+        onBack={() => setCurrentScreen('home')}
+        onUpdateProfile={handleUpdateProfile}
+      />
+    );
+  }
+
   return (
     <SafeAreaView className={`flex-1 ${isDarkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
@@ -55,10 +118,65 @@ const App = () => {
               HealthBlock
             </Text>
           </View>
-          <TouchableOpacity className="p-2">
-            <Menu stroke={isDarkMode ? '#F9FAFB' : '#1F2937'} width={24} height={24} />
-          </TouchableOpacity>
+          {isSignedIn ? (
+            <TouchableOpacity className="flex-row items-center" onPress={toggleMenu}>
+              <Image source={{ uri: userData.profilePic }} className="mr-2 h-8 w-8 rounded-full" />
+              <Menu stroke={isDarkMode ? '#F9FAFB' : '#1F2937'} width={24} height={24} />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity className="p-2" onPress={toggleMenu}>
+              <Menu stroke={isDarkMode ? '#F9FAFB' : '#1F2937'} width={24} height={24} />
+            </TouchableOpacity>
+          )}
         </View>
+
+        {/* Dropdown Menu */}
+        {menuOpen && (
+          <View
+            className={`absolute right-4 top-14 z-10 rounded-lg shadow-lg ${
+              isDarkMode ? 'bg-gray-800' : 'bg-white'
+            }`}
+            style={{ width: 200 }}>
+            {isSignedIn && (
+              <View
+                className={`border-b px-4 py-3 ${isDarkMode ? 'border-gray-700' : 'border-gray-200'}`}>
+                <Text className={`font-semibold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
+                  {userData.name}
+                </Text>
+                <Text className={`text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>
+                  {userData.email}
+                </Text>
+              </View>
+            )}
+            {menuOptions.map((option, index) => (
+              <TouchableOpacity
+                key={index}
+                className={`px-4 py-3 ${
+                  index < menuOptions.length - 1
+                    ? isDarkMode
+                      ? 'border-b border-gray-700'
+                      : 'border-b border-gray-200'
+                    : ''
+                }`}
+                onPress={() => {
+                  option.onPress();
+                  setMenuOpen(false);
+                }}>
+                <Text className={isDarkMode ? 'text-white' : 'text-gray-800'}>{option.title}</Text>
+              </TouchableOpacity>
+            ))}
+            {isSignedIn && (
+              <TouchableOpacity
+                className={`px-4 py-3 ${isDarkMode ? 'border-t border-gray-700' : 'border-t border-gray-200'}`}
+                onPress={() => {
+                  handleSignOut();
+                  setMenuOpen(false);
+                }}>
+                <Text className={isDarkMode ? 'text-red-400' : 'text-red-500'}>Sign Out</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
 
         {/* Hero Section */}
         <View className="items-center px-6 py-8">
@@ -71,19 +189,37 @@ const App = () => {
             Smart policies, automated claims, and verified health data in a decentralized ecosystem.
           </Text>
 
-          <View className="mb-6 w-full overflow-hidden rounded-xl">
-            <Image
-              source={{
-                uri: 'https://via.placeholder.com/600x400?text=Blockchain+Health+Insurance',
-              }}
-              className="h-48 w-full"
-              resizeMode="cover"
-            />
-          </View>
-
-          <TouchableOpacity className="rounded-lg bg-emerald-600 px-6 py-3">
-            <Text className="font-semibold text-white">Get Started</Text>
-          </TouchableOpacity>
+          {isSignedIn ? (
+            <View className="items-center">
+              <View className="mb-4 flex-row items-center rounded-lg bg-emerald-50 p-4">
+                <Image
+                  source={{ uri: userData.profilePic }}
+                  className="mr-3 h-12 w-12 rounded-full"
+                />
+                <View>
+                  <Text className="text-lg font-bold text-gray-800">{userData.name}</Text>
+                  <Text className="text-gray-600">Active Member</Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                className="rounded-lg bg-emerald-600 px-6 py-3"
+                onPress={() => console.log('View policies')}>
+                <Text className="font-semibold text-white">View My Policies</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View className="items-center space-y-3">
+              <TouchableOpacity
+                className="flex-row items-center rounded-lg bg-white px-6 py-3 shadow-sm"
+                onPress={handleSignIn}>
+                <Image
+                  source={{ uri: 'https://developers.google.com/identity/images/g-logo.png' }}
+                  style={{ width: 24, height: 24, marginRight: 8 }}
+                />
+                <Text className="font-semibold text-gray-700">Sign in with Google</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
 
         {/* Features Section */}

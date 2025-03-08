@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -11,6 +11,7 @@ import {
   Button,
   Animated,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Shield, Award, TrendingUp, FileText, ArrowRight, Menu, User } from 'react-native-feather';
 import ProfileDashboard from './ProfileDashboard';
@@ -27,12 +28,13 @@ const App = () => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [isSignedIn, setIsSignedIn] = useState(false);
   const [currentScreen, setCurrentScreen] = useState('home');
+  const [isLoading, setIsLoading] = useState(false);
 
   // Mock user data
   const [userData, setUserData] = useState<UserData>({
     name: 'Unnat Sharma',
-    email: 'unnat.sharma@example.com',
-    profilePic: 'https://randomuser.me/api/portraits/men/32.jpg',
+    email: 'officialunnat30@gmail.com',
+    profilePic: '',
   });
 
   // Features data
@@ -89,8 +91,14 @@ const App = () => {
   };
 
   const handleSignIn = () => {
-    setIsSignedIn(true);
-    Alert.alert('Welcome', `Signed in as ${userData.name}`);
+    setIsLoading(true);
+
+    // Simulate authentication delay
+    setTimeout(() => {
+      setIsLoading(false);
+      setIsSignedIn(true);
+      Alert.alert('Welcome', `Signed in as ${userData.name}`);
+    }, 2000); // 2 second delay
   };
 
   const handleSignOut = () => {
@@ -227,15 +235,24 @@ const App = () => {
             </View>
           ) : (
             <View className="items-center space-y-3">
-              <TouchableOpacity
-                className="flex-row items-center rounded-lg bg-white px-6 py-3 shadow-sm"
-                onPress={handleSignIn}>
-                <Image
-                  source={{ uri: 'https://developers.google.com/identity/images/g-logo.png' }}
-                  style={{ width: 24, height: 24, marginRight: 8 }}
-                />
-                <Text className="font-semibold text-gray-700">Sign in with Google</Text>
-              </TouchableOpacity>
+              {isLoading ? (
+                <View className="items-center space-y-3">
+                  <ActivityIndicator size="large" color="#10B981" />
+                  <Text className={`${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                    Authenticating...
+                  </Text>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  className="flex-row items-center rounded-lg bg-white px-6 py-3 shadow-sm"
+                  onPress={handleSignIn}>
+                  <Image
+                    source={{ uri: 'https://developers.google.com/identity/images/g-logo.png' }}
+                    style={{ width: 24, height: 24, marginRight: 8 }}
+                  />
+                  <Text className="font-semibold text-gray-700">Sign in with Google</Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
         </View>

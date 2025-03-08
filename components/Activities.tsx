@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -9,12 +9,14 @@ import {
   useColorScheme,
   Alert,
   Image,
-  TextInput,
   ActivityIndicator,
+  TextInput,
 } from 'react-native';
-import { Shield, ArrowLeft, Camera, TrendingUp, Check, Clock } from 'react-native-feather';
+import { Shield, ArrowLeft, Camera, Upload } from 'react-native-feather';
 import * as ImagePicker from 'expo-image-picker';
-import { getFoodEntries, createFoodEntry, uploadImage, FoodEntryData } from '../services/api';
+import { RNS3 } from 'react-native-aws3';
+import { S3_BUCKET_NAME, AWS_REGION, AWS_ACCESS_KEY, AWS_SECRET_ACCESS_KEY } from '@env';
+import * as FileSystem from 'expo-file-system';
 
 interface ActivitiesProps {
   onBack: () => void;
@@ -25,43 +27,59 @@ interface ActivitiesProps {
   };
 }
 
-interface FoodEntry {
-  id: string;
-  title: string;
-  imageUri: string;
-  timestamp: Date;
-  verified: boolean;
-}
-
 const Activities = ({ onBack, userData }: ActivitiesProps) => {
   const isDarkMode = useColorScheme() === 'dark';
-  const [foodEntries, setFoodEntries] = useState<FoodEntry[]>([]);
   const [isCapturing, setIsCapturing] = useState(false);
   const [currentImage, setCurrentImage] = useState<string | null>(null);
-  const [entryTitle, setEntryTitle] = useState('');
+  const [base64string, setBase64string] = useState<string | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [imageName, setImageName] = useState('');
+  const [connectionStatus, setConnectionStatus] = useState<string | null>(null);
 
-  // Fetch entries from MongoDB when component mounts
-  useEffect(() => {
-    fetchEntries();
-  }, []);
+  // S3 Configuration
+  const s3Options = {
+    keyPrefix: 'food_uploads/',
+    bucket: S3_BUCKET_NAME || 'your-bucket-name',
+    region: AWS_REGION || 'us-east-1',
+    accessKey: AWS_ACCESS_KEY || '',
+    secretKey: AWS_SECRET_ACCESS_KEY || '',
+  };
 
-  // Fetch entries from MongoDB
-  const fetchEntries = async () => {
+  console.log(s3Options);
+
+  // Test S3 connection
+  const testS3Connection = async () => {
+    setConnectionStatus('checking');
+
     try {
-      const entries = await getFoodEntries();
-      setFoodEntries(
-        entries.map((entry) => ({
-          ...entry,
-          id: entry.id || String(Date.now()), // Provide fallback ID if missing
-        }))
-      );
+      // Create a small test file
+      const testFile = {
+        uri: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+        name: `connection_test_${Date.now()}.png`,
+        type: 'image/png',
+      };
+
+      // Attempt to upload the test file
+      const response = await RNS3.put(testFile, s3Options);
+
+      if (response.status === 201) {
+        console.log('S3 connection successful:', response.text);
+        setConnectionStatus('success');
+        Alert.alert('Connection Successful', 'Successfully connected to S3 bucket!');
+      } else {
+        console.error('S3 connection failed:', response);
+        setConnectionStatus('failed');
+        Alert.alert('Connection Failed', 'Could not connect to S3 bucket. Check your credentials.');
+      }
     } catch (error) {
-      Alert.alert('Error', 'Failed to load your entries');
-      console.error('Error fetching entries:', error);
-    } finally {
-      setIsLoading(false);
+      console.error('Error testing S3 connection:', error);
+      setConnectionStatus('error');
+      Alert.alert(
+        'Connection Error',
+        `Error: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
   };
 
@@ -78,78 +96,107 @@ const Activities = ({ onBack, userData }: ActivitiesProps) => {
       return;
     }
 
-    // Open camera
+    // Open camera with minimal processing
     const result = await ImagePicker.launchCameraAsync({
-      allowsEditing: true,
-      quality: 0.8,
+      allowsEditing: false, // Disable editing to preserve original image
+      quality: 1, // Use maximum quality (1.0) to avoid compression
       exif: true, // Include EXIF data for timestamp verification
+      base64: true,
     });
 
     if (!result.canceled && result.assets && result.assets.length > 0) {
       setIsVerifying(true);
       setIsLoading(true);
 
-      // Simulate verification process
-      setTimeout(() => {
+      try {
         const capturedImage = result.assets[0].uri;
+        const base64string = result.assets[0].base64;
+        setBase64string(base64string || '');
+        // Set the current image
         setCurrentImage(capturedImage);
+        console.log('Image captured:', capturedImage);
+
+        // Save base64 string to a local file
+        if (base64string) {
+          const fileName = `image_${Date.now()}.txt`;
+          const fileUri = `${FileSystem.documentDirectory}${fileName}`;
+          await FileSystem.writeAsStringAsync(fileUri, base64string);
+          console.log('Base64 image saved to:', fileUri);
+        }
+
+        // Show the captured image
         setIsCapturing(true);
+      } catch (error) {
+        console.error('Error saving image locally:', error);
+        Alert.alert('Error', 'Failed to save the image locally');
+      } finally {
         setIsVerifying(false);
         setIsLoading(false);
-      }, 2000);
+      }
     }
   };
 
-  // Save the food entry to MongoDB
-  const saveEntry = async () => {
-    if (!currentImage || !entryTitle.trim()) {
-      Alert.alert('Missing Information', 'Please provide a title for your healthy meal');
+  // Function to read base64 from file
+  const readBase64FromFile = async (fileUri: string) => {
+    try {
+      const base64Content = await FileSystem.readAsStringAsync(fileUri);
+      console.log('Successfully read base64 from file');
+      return base64Content;
+    } catch (error) {
+      console.error('Error reading base64 from file:', error);
+      return null;
+    }
+  };
+
+  // Upload image to AWS S3
+  const uploadToAWS = async () => {
+    if (!currentImage) {
+      Alert.alert('Error', 'No image to upload');
       return;
     }
 
-    setIsLoading(true);
+    if (!imageName.trim()) {
+      Alert.alert('Error', 'Please provide a name for your image');
+      return;
+    }
+
+    setIsUploading(true);
 
     try {
-      // 1. Upload image to storage service
-      const imageUrl = await uploadImage(currentImage);
-
-      // 2. Create entry in MongoDB
-      const newEntry: FoodEntryData = {
-        title: entryTitle,
-        imageUri: imageUrl,
-        timestamp: new Date(),
-        verified: true,
+      // Create a file object for S3 upload
+      const file = {
+        uri: currentImage,
+        name: `${imageName.replace(/\s+/g, '_')}_${Date.now()}.jpg`,
+        type: 'image/jpeg',
       };
 
-      await createFoodEntry(newEntry);
+      // Upload to S3
+      const response = await RNS3.put(file, s3Options).then(() => {
+        function extractLocationData(input: string): string | null {
+          const match = input.match(/<Location>(.*?)<\/Location>/s);
+          return match ? match[1] : null;
+        }
+        const imageLocation = extractLocationData(response.text);
+      });
 
-      // 3. Refresh entries
-      await fetchEntries();
+      if (response.status === 201) {
+        console.log('Successfully uploaded to S3:', response.text);
+        Alert.alert('Success', 'Image uploaded successfully!');
 
-      // 4. Reset form
-      setCurrentImage(null);
-      setEntryTitle('');
-      setIsCapturing(false);
-
-      Alert.alert('Success', 'Your healthy meal has been recorded and verified!');
+        // Reset states after successful upload
+        setCurrentImage(null);
+        setImageName('');
+        setIsCapturing(false);
+      } else {
+        console.error('Failed to upload to S3:', response);
+        Alert.alert('Error', 'Failed to upload image to server');
+      }
     } catch (error) {
-      console.error('Error saving entry:', error);
-      Alert.alert('Error', 'Failed to save your entry. Please try again.');
+      console.error('Error uploading to S3:', error);
+      Alert.alert('Error', 'Failed to upload image to server');
     } finally {
-      setIsLoading(false);
+      setIsUploading(false);
     }
-  };
-
-  // Cancel the current capture
-  const cancelCapture = () => {
-    setCurrentImage(null);
-    setEntryTitle('');
-    setIsCapturing(false);
-  };
-
-  // Access fitness analytics
-  const accessFitAnalytics = () => {
-    Alert.alert('Coming Soon', 'Fitness analytics integration is coming in the next update!');
   };
 
   return (
@@ -171,173 +218,157 @@ const Activities = ({ onBack, userData }: ActivitiesProps) => {
         </View>
 
         {/* Main Content */}
-        {isCapturing ? (
-          // Capture Form
-          <View className="px-6 py-4">
-            <Text
-              className={`mb-4 text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
-              Verify Your Healthy Meal
-            </Text>
+        <View className="px-6 py-4">
+          <Text
+            className={`mb-6 text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
+            Track Your Healthy Habits
+          </Text>
 
-            {currentImage && (
-              <View className="mb-4 items-center">
+          {isLoading && (
+            <View className="items-center justify-center py-8">
+              <ActivityIndicator size="large" color="#10B981" />
+              <Text className={`mt-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                {isVerifying ? 'Verifying your photo...' : 'Loading...'}
+              </Text>
+            </View>
+          )}
+
+          {isUploading && (
+            <View className="items-center justify-center py-8">
+              <ActivityIndicator size="large" color="#10B981" />
+              <Text className={`mt-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                Uploading your image...
+              </Text>
+            </View>
+          )}
+
+          {!isLoading && !isUploading && !currentImage && (
+            <>
+              <TouchableOpacity
+                className={`mb-4 flex-row items-center rounded-xl p-5 ${
+                  isDarkMode ? 'bg-gray-800' : 'bg-white'
+                } shadow-sm`}
+                onPress={captureFood}>
+                <View className="mr-4 h-12 w-12 items-center justify-center rounded-full bg-emerald-500">
+                  <Camera stroke="#FFFFFF" width={24} height={24} />
+                </View>
+                <View className="flex-1">
+                  <Text
+                    className={`mb-1 text-lg font-semibold ${
+                      isDarkMode ? 'text-white' : 'text-gray-800'
+                    }`}>
+                    Capture Your Healthy Eating
+                  </Text>
+                  <Text className={`${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>
+                    Take photos of your meals for verification and rewards
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* S3 Connection Test Button */}
+              <TouchableOpacity
+                className={`mb-4 flex-row items-center rounded-xl p-5 ${
+                  isDarkMode ? 'bg-gray-800' : 'bg-white'
+                } shadow-sm`}
+                onPress={testS3Connection}>
+                <View className="mr-4 h-12 w-12 items-center justify-center rounded-full bg-blue-500">
+                  <Shield stroke="#FFFFFF" width={24} height={24} />
+                </View>
+                <View className="flex-1">
+                  <Text
+                    className={`mb-1 text-lg font-semibold ${
+                      isDarkMode ? 'text-white' : 'text-gray-800'
+                    }`}>
+                    Test S3 Connection
+                  </Text>
+                  <Text className={`${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>
+                    Verify your AWS S3 bucket connection
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Connection Status Indicator */}
+              {connectionStatus && (
+                <View
+                  className={`mb-4 rounded-lg p-3 ${
+                    connectionStatus === 'success'
+                      ? 'bg-green-100'
+                      : connectionStatus === 'failed' || connectionStatus === 'error'
+                        ? 'bg-red-100'
+                        : 'bg-yellow-100'
+                  }`}>
+                  <Text
+                    className={`text-center ${
+                      connectionStatus === 'success'
+                        ? 'text-green-700'
+                        : connectionStatus === 'failed' || connectionStatus === 'error'
+                          ? 'text-red-700'
+                          : 'text-yellow-700'
+                    }`}>
+                    {connectionStatus === 'checking'
+                      ? 'Checking connection...'
+                      : connectionStatus === 'success'
+                        ? 'Successfully connected to S3!'
+                        : connectionStatus === 'failed'
+                          ? 'Connection failed. Check your credentials.'
+                          : 'Error connecting to S3. See console for details.'}
+                  </Text>
+                </View>
+              )}
+            </>
+          )}
+
+          {/* Display captured image if available */}
+          {currentImage && !isUploading && (
+            <View className="mb-4">
+              <View className="items-center">
                 <Image
                   source={{ uri: currentImage }}
                   className="h-64 w-full rounded-lg"
                   resizeMode="cover"
                 />
                 <View className="mt-2 flex-row items-center rounded-full bg-emerald-100 px-3 py-1">
-                  <Check stroke="#10B981" width={16} height={16} />
-                  <Text className="ml-1 text-sm text-emerald-700">Real-time verified</Text>
+                  <Text className="ml-1 text-sm text-emerald-700">Image captured successfully</Text>
                 </View>
               </View>
-            )}
 
-            <View
-              className={`rounded-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'} mb-4 p-4 shadow-sm`}>
-              <Text className={`mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                Give your meal a title:
-              </Text>
-              <TextInput
-                className={`mb-4 rounded-lg border px-3 py-2 ${
-                  isDarkMode ? 'border-gray-700 text-white' : 'border-gray-300 text-gray-800'
-                }`}
-                placeholder="E.g., Healthy Breakfast Bowl"
-                placeholderTextColor={isDarkMode ? '#9CA3AF' : '#6B7280'}
-                value={entryTitle}
-                onChangeText={setEntryTitle}
-              />
+              {/* Image naming input */}
+              <View className="mt-4">
+                <Text className={`mb-2 font-medium ${isDarkMode ? 'text-white' : 'text-gray-700'}`}>
+                  Name your meal:
+                </Text>
+                <TextInput
+                  className={`mb-4 rounded-lg border border-gray-300 p-3 ${
+                    isDarkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-800'
+                  }`}
+                  placeholder="Enter a name for your meal"
+                  placeholderTextColor={isDarkMode ? '#9CA3AF' : '#6B7280'}
+                  value={imageName}
+                  onChangeText={setImageName}
+                />
 
-              <View className="flex-row justify-between">
+                {/* Upload button */}
                 <TouchableOpacity
-                  className="rounded-lg bg-gray-300 px-4 py-2"
-                  onPress={cancelCapture}>
-                  <Text className="font-semibold text-gray-700">Cancel</Text>
+                  className="flex-row items-center justify-center rounded-lg bg-emerald-500 p-3"
+                  onPress={uploadToAWS}>
+                  <Upload stroke="#FFFFFF" width={20} height={20} />
+                  <Text className="ml-2 font-semibold text-white">Upload to Server</Text>
                 </TouchableOpacity>
 
+                {/* Retake photo button */}
                 <TouchableOpacity
-                  className="rounded-lg bg-emerald-600 px-4 py-2"
-                  onPress={saveEntry}>
-                  <Text className="font-semibold text-white">Save Entry</Text>
+                  className="mt-3 flex-row items-center justify-center rounded-lg border border-gray-300 p-3"
+                  onPress={captureFood}>
+                  <Camera stroke={isDarkMode ? '#F9FAFB' : '#1F2937'} width={20} height={20} />
+                  <Text
+                    className={`ml-2 font-semibold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
+                    Retake Photo
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
-          </View>
-        ) : (
-          // Activities Options
-          <View className="px-6 py-4">
-            <Text
-              className={`mb-6 text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
-              Track Your Healthy Habits
-            </Text>
-
-            {isLoading && (
-              <View className="items-center justify-center py-8">
-                <ActivityIndicator size="large" color="#10B981" />
-                <Text className={`mt-4 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-                  {isVerifying ? 'Verifying your photo...' : 'Loading...'}
-                </Text>
-              </View>
-            )}
-
-            {!isLoading && (
-              <>
-                <TouchableOpacity
-                  className={`mb-4 flex-row items-center rounded-xl p-5 ${
-                    isDarkMode ? 'bg-gray-800' : 'bg-white'
-                  } shadow-sm`}
-                  onPress={captureFood}>
-                  <View className="mr-4 h-12 w-12 items-center justify-center rounded-full bg-emerald-500">
-                    <Camera stroke="#FFFFFF" width={24} height={24} />
-                  </View>
-                  <View className="flex-1">
-                    <Text
-                      className={`mb-1 text-lg font-semibold ${
-                        isDarkMode ? 'text-white' : 'text-gray-800'
-                      }`}>
-                      Capture Your Healthy Eating
-                    </Text>
-                    <Text className={`${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>
-                      Take photos of your meals for verification and rewards
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  className={`mb-4 flex-row items-center rounded-xl p-5 ${
-                    isDarkMode ? 'bg-gray-800' : 'bg-white'
-                  } shadow-sm`}
-                  onPress={accessFitAnalytics}>
-                  <View className="mr-4 h-12 w-12 items-center justify-center rounded-full bg-purple-500">
-                    <TrendingUp stroke="#FFFFFF" width={24} height={24} />
-                  </View>
-                  <View className="flex-1">
-                    <Text
-                      className={`mb-1 text-lg font-semibold ${
-                        isDarkMode ? 'text-white' : 'text-gray-800'
-                      }`}>
-                      Fetch Fit Analytics
-                    </Text>
-                    <Text className={`${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>
-                      Connect with fitness apps to track your health progress
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              </>
-            )}
-
-            {/* Recent Entries */}
-            {foodEntries.length > 0 && (
-              <View className="mt-6">
-                <Text
-                  className={`mb-4 text-xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
-                  Recent Entries
-                </Text>
-
-                {foodEntries.map((entry) => (
-                  <View
-                    key={entry.id}
-                    className={`mb-4 rounded-xl p-4 ${
-                      isDarkMode ? 'bg-gray-800' : 'bg-white'
-                    } shadow-sm`}>
-                    <Image
-                      source={{ uri: entry.imageUri }}
-                      className="mb-3 h-48 w-full rounded-lg"
-                      resizeMode="cover"
-                    />
-                    <View className="flex-row items-center justify-between">
-                      <View>
-                        <Text
-                          className={`text-lg font-semibold ${
-                            isDarkMode ? 'text-white' : 'text-gray-800'
-                          }`}>
-                          {entry.title}
-                        </Text>
-                        <View className="mt-1 flex-row items-center">
-                          <Clock
-                            stroke={isDarkMode ? '#9CA3AF' : '#6B7280'}
-                            width={14}
-                            height={14}
-                          />
-                          <Text
-                            className={`ml-1 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                            {entry.timestamp.toLocaleString()}
-                          </Text>
-                        </View>
-                      </View>
-                      {entry.verified && (
-                        <View className="flex-row items-center rounded-full bg-emerald-100 px-2 py-1">
-                          <Check stroke="#10B981" width={14} height={14} />
-                          <Text className="ml-1 text-xs text-emerald-700">Verified</Text>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                ))}
-              </View>
-            )}
-          </View>
-        )}
+          )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );

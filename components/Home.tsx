@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { Shield, Award, TrendingUp, FileText, ArrowRight, Menu, User } from 'react-native-feather';
 import ProfileDashboard from './ProfileDashboard';
+import Activities from './Activities';
 
 export interface UserData {
   name: string;
@@ -73,6 +74,13 @@ const App = () => {
         setMenuOpen(false);
       },
     },
+    {
+      title: 'Health Activities',
+      onPress: () => {
+        setCurrentScreen('activities');
+        setMenuOpen(false);
+      },
+    },
     { title: 'Settings', onPress: () => console.log('Settings pressed') },
   ];
 
@@ -103,6 +111,10 @@ const App = () => {
         onUpdateProfile={handleUpdateProfile}
       />
     );
+  }
+
+  if (currentScreen === 'activities' && isSignedIn) {
+    return <Activities userData={userData} onBack={() => setCurrentScreen('home')} />;
   }
 
   return (
@@ -190,7 +202,7 @@ const App = () => {
           </Text>
 
           {isSignedIn ? (
-            <View className="items-center">
+            <View className="items-center space-y-3">
               <View className="mb-4 flex-row items-center rounded-lg bg-emerald-50 p-4">
                 <Image
                   source={{ uri: userData.profilePic }}
@@ -202,9 +214,15 @@ const App = () => {
                 </View>
               </View>
               <TouchableOpacity
-                className="rounded-lg bg-emerald-600 px-6 py-3"
+                className="mb-2 rounded-lg bg-emerald-600 px-6 py-3"
                 onPress={() => console.log('View policies')}>
                 <Text className="font-semibold text-white">View My Policies</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                className="rounded-lg bg-purple-600 px-6 py-3"
+                onPress={() => setCurrentScreen('activities')}>
+                <Text className="font-semibold text-white">Track Health Activities</Text>
               </TouchableOpacity>
             </View>
           ) : (

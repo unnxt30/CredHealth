@@ -34,7 +34,7 @@ const App = () => {
         <View style={styles.header}>
           <View style={styles.logoContainer}>
             <Heart stroke={isDarkMode ? "#4ADE80" : "#10B981"} width={24} height={24} />
-            <Text style={[styles.logoText, isDarkMode && styles.textLight]}>HealthCredit</Text>
+            <Text style={[styles.logoText, isDarkMode && styles.textLight]}>HealthCred</Text>
           </View>
           <TouchableOpacity style={styles.menuButton}>
             <Menu stroke={isDarkMode ? "#F9FAFB" : "#1F2937"} width={24} height={24} />

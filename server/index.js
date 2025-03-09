@@ -5,7 +5,7 @@ const fetch = require('node-fetch');
 const app = express();
 const PORT = 3000;
 const API_BASE_URL = 'http://rnnfv-103-27-167-96.a.free.pinggy.link/';
-const API_BASE_URL_BLOCK = 'http://rngsw-103-27-167-56.a.free.pinggy.link/';
+const API_BASE_URL_BLOCK = 'http://rnkph-103-27-167-56.a.free.pinggy.link/';
 
 app.use(cors());
 app.use(express.json());
@@ -135,7 +135,7 @@ app.get('/getPolicyDetails/:policyId', async (req, res) => {
 app.post('/updateHealthPoints', async (req, res) => {
   const { policyId, newHealthPoints, userWalletAddress } = req.body;
   try {
-    const response = await fetch(`${API_BASE_URL_BLOCK}updateHelathPoints/`, {
+    const response = await fetch(`${API_BASE_URL_BLOCK}updateHealthPoints/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

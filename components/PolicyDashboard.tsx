@@ -224,6 +224,12 @@ const BlockchainPolicyDashboard = ({ onBack }) => {
     setIsUpdating(true);
 
     try {
+      // First, ensure the updatedScore is a string
+      const scoreAsString = String(updatedScore);
+
+      console.log(`Updating policy ${policyId} with health score ${scoreAsString}`);
+      console.log(`Using wallet address: ${walletId}`);
+
       const updateResponse = await fetch(`${API_BASE_URL}/updateHealthPoints`, {
         method: 'POST',
         headers: {
@@ -231,28 +237,33 @@ const BlockchainPolicyDashboard = ({ onBack }) => {
         },
         body: JSON.stringify({
           policyId,
-          updatedScore,
+          updatedScore: scoreAsString,
           walletId,
         }),
       });
 
       if (!updateResponse.ok) {
         const errorText = await updateResponse.text();
-        console.error('Update failed');
+        console.error('Update failed:', updateResponse.status, errorText);
+        throw new Error(`API error: ${updateResponse.status}`);
       }
 
       const result = await updateResponse.json();
+      console.log('Update result:', result);
 
+      // Update the policies list with the new health points
       const updatedPolicies = policies.map((p) => {
-        if (p.policyID == policyId) {
+        if (p.policyID === policyId) {
+          // Use strict equality here
           return {
             ...p,
-            currentHealthPoints: updatedScore,
+            currentHealthPoints: scoreAsString,
             ...(result.policy || {}),
           };
         }
         return p;
       });
+
       setPolicies(updatedPolicies);
       await savePolicies(updatedPolicies);
 
@@ -260,7 +271,7 @@ const BlockchainPolicyDashboard = ({ onBack }) => {
       if (selectedPolicy && selectedPolicy.policyID === policyId) {
         setSelectedPolicy({
           ...selectedPolicy,
-          currentHealthPoints: currentHealthScore,
+          currentHealthPoints: scoreAsString,
           // Update other fields if the API returns them
           ...(result.policy || {}),
         });
@@ -761,10 +772,10 @@ const BlockchainPolicyDashboard = ({ onBack }) => {
                   </Text>
                 </View>
 
-                {/* Add this inside your Policy Details Modal, right before the Close Button */}
+                {/* Update the condition in your Policy Details Modal */}
                 {selectedPolicy && currentHealthScore && (
                   <View className="mt-4">
-                    {selectedPolicy.currentHealthPoints !== currentHealthScore ? (
+                    {String(selectedPolicy.currentHealthPoints) !== String(currentHealthScore) ? (
                       <View className="mb-4 rounded-lg bg-blue-100 p-4">
                         <Text className="mb-2 text-center text-blue-800">
                           Your current health score ({currentHealthScore}) differs from the policy's

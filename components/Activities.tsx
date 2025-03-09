@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -17,6 +17,9 @@ import * as ImagePicker from 'expo-image-picker';
 import { RNS3 } from 'react-native-aws3';
 import { S3_BUCKET_NAME, AWS_REGION, AWS_ACCESS_KEY, AWS_SECRET_ACCESS_KEY } from '@env';
 import * as FileSystem from 'expo-file-system';
+import { evaluateMealPhoto } from 'services/healthScoreApi';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { PROFILE_PIC_KEY } from './ProfileDashboard';
 
 interface ActivitiesProps {
   onBack: () => void;
@@ -27,6 +30,18 @@ interface ActivitiesProps {
   };
 }
 
+export const generateS3Options = (subfolder: string) => {
+  return {
+    keyPrefix: `${subfolder}/`,
+    bucket: S3_BUCKET_NAME || 'your-bucket-name',
+    region: AWS_REGION || 'us-east-1',
+    accessKey: AWS_ACCESS_KEY || '',
+    secretKey: AWS_SECRET_ACCESS_KEY || '',
+  };
+};
+
+const s3Options = generateS3Options('food_uploads');
+const selfieS3Options = generateS3Options('selfies');
 const Activities = ({ onBack, userData }: ActivitiesProps) => {
   const isDarkMode = useColorScheme() === 'dark';
   const [isCapturing, setIsCapturing] = useState(false);
@@ -37,17 +52,26 @@ const Activities = ({ onBack, userData }: ActivitiesProps) => {
   const [isUploading, setIsUploading] = useState(false);
   const [imageName, setImageName] = useState('');
   const [connectionStatus, setConnectionStatus] = useState<string | null>(null);
+  const [storedProfilePic, setStoredProfilePic] = useState<string | null>(null);
+  const [selfieMode, setSelfieMode] = useState(false);
+  const [currentSelfie, setCurrentSelfie] = useState<string | null>(null);
+  const [currentSelfieUrl, setCurrentSelfieUrl] = useState<string | null>(null);
 
-  // S3 Configuration
-  const s3Options = {
-    keyPrefix: 'food_uploads/',
-    bucket: S3_BUCKET_NAME || 'your-bucket-name',
-    region: AWS_REGION || 'us-east-1',
-    accessKey: AWS_ACCESS_KEY || '',
-    secretKey: AWS_SECRET_ACCESS_KEY || '',
-  };
+  useEffect(() => {
+    const loadStoredProfilePic = async () => {
+      try {
+        const savedPic = await AsyncStorage.getItem(PROFILE_PIC_KEY);
+        if (savedPic) {
+          setStoredProfilePic(savedPic);
+          console.log('Loaded stored profile picture:', savedPic);
+        }
+      } catch (error) {
+        console.error('Error loading stored profile picture:', error);
+      }
+    };
 
-  console.log(s3Options);
+    loadStoredProfilePic();
+  }, []);
 
   // Test S3 connection
   const testS3Connection = async () => {
@@ -83,6 +107,63 @@ const Activities = ({ onBack, userData }: ActivitiesProps) => {
     }
   };
 
+  const captureSelfie = async () => {
+    // Request camera permissions
+    const cameraPermission = await ImagePicker.requestCameraPermissionsAsync();
+
+    if (cameraPermission.status !== 'granted') {
+      Alert.alert('Permission Required', 'Please allow access to your camera to take a selfie.');
+      return;
+    }
+
+    // Open front camera
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+      cameraType: ImagePicker.CameraType.front,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setIsVerifying(true);
+      setIsLoading(true);
+
+      try {
+        const capturedSelfie = result.assets[0].uri;
+        setCurrentSelfie(capturedSelfie);
+        console.log('Selfie captured:', capturedSelfie);
+
+        // Upload selfie to S3
+        const file = {
+          uri: capturedSelfie,
+          name: `selfie_${Date.now()}.jpg`,
+          type: 'image/jpeg',
+        };
+
+        const response = await RNS3.put(file, selfieS3Options);
+
+        if (response.status === 201) {
+          const selfieUrl = response.body.postResponse.location;
+          setCurrentSelfieUrl(selfieUrl);
+          console.log('Selfie uploaded to S3:', selfieUrl);
+
+          // Now proceed to food photo mode
+          setSelfieMode(false);
+          Alert.alert('Selfie Captured', 'Now please take a photo of your meal');
+        } else {
+          console.error('Failed to upload selfie to S3:', response);
+          Alert.alert('Error', 'Failed to upload selfie to server');
+        }
+      } catch (error) {
+        console.error('Error processing selfie:', error);
+        Alert.alert('Error', 'Failed to process selfie');
+      } finally {
+        setIsVerifying(false);
+        setIsLoading(false);
+      }
+    }
+  };
+
   // Take a photo with real-time verification
   const captureFood = async () => {
     // Request camera permissions
@@ -110,19 +191,9 @@ const Activities = ({ onBack, userData }: ActivitiesProps) => {
 
       try {
         const capturedImage = result.assets[0].uri;
-        const base64string = result.assets[0].base64;
-        setBase64string(base64string || '');
         // Set the current image
         setCurrentImage(capturedImage);
         console.log('Image captured:', capturedImage);
-
-        // Save base64 string to a local file
-        if (base64string) {
-          const fileName = `image_${Date.now()}.txt`;
-          const fileUri = `${FileSystem.documentDirectory}${fileName}`;
-          await FileSystem.writeAsStringAsync(fileUri, base64string);
-          console.log('Base64 image saved to:', fileUri);
-        }
 
         // Show the captured image
         setIsCapturing(true);
@@ -133,18 +204,6 @@ const Activities = ({ onBack, userData }: ActivitiesProps) => {
         setIsVerifying(false);
         setIsLoading(false);
       }
-    }
-  };
-
-  // Function to read base64 from file
-  const readBase64FromFile = async (fileUri: string) => {
-    try {
-      const base64Content = await FileSystem.readAsStringAsync(fileUri);
-      console.log('Successfully read base64 from file');
-      return base64Content;
-    } catch (error) {
-      console.error('Error reading base64 from file:', error);
-      return null;
     }
   };
 
@@ -171,26 +230,48 @@ const Activities = ({ onBack, userData }: ActivitiesProps) => {
       };
 
       // Upload to S3
-      const response = await RNS3.put(file, s3Options).then(() => {
-        function extractLocationData(input: string): string | null {
-          const match = input.match(/<Location>(.*?)<\/Location>/s);
-          return match ? match[1] : null;
-        }
-        const imageLocation = extractLocationData(response.text);
-      });
+      const response = await RNS3.put(file, s3Options);
+      const meal = response.body.postResponse.location;
+      const savedFaceUrl =
+        storedProfilePic ||
+        userData.profilePic ||
+        'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8d/President_Barack_Obama.jpg/440px-President_Barack_Obama.jpg';
+      const testFaceUrl =
+        currentSelfieUrl ||
+        'https://cdn.britannica.com/89/164789-050-D6B5E2C7/Barack-Obama-2012.jpg?w=800&h=600';
 
       if (response.status === 201) {
-        console.log('Successfully uploaded to S3:', response.text);
-        Alert.alert('Success', 'Image uploaded successfully!');
+        console.log('Sending to evaluate-meal with params:', {
+          savedFace: savedFaceUrl,
+          testFace: testFaceUrl,
+          meal: meal,
+        });
 
-        // Reset states after successful upload
-        setCurrentImage(null);
-        setImageName('');
-        setIsCapturing(false);
+        const result = await evaluateMealPhoto(savedFaceUrl, testFaceUrl, meal);
+        console.log('Evaluation result:', result);
+
+        if (result.success) {
+          if (!result.verified) {
+            // Show alert for failed verification
+            Alert.alert(
+              'Verification Failed',
+              'The selfie images did not match. Please try again with a clearer selfie.',
+              [{ text: 'OK' }]
+            );
+          } else {
+            Alert.alert('Success', 'Image uploaded and verified successfully!');
+          }
+        }
       } else {
-        console.error('Failed to upload to S3:', response);
-        Alert.alert('Error', 'Failed to upload image to server');
+        Alert.alert('Error', 'Failed to process the meal image. Please try again.');
       }
+
+      console.log('Successfully uploaded to S3:', response.text);
+
+      // Reset states after upload (regardless of verification result)
+      setCurrentImage(null);
+      setImageName('');
+      setIsCapturing(false);
     } catch (error) {
       console.error('Error uploading to S3:', error);
       Alert.alert('Error', 'Failed to upload image to server');
@@ -244,6 +325,25 @@ const Activities = ({ onBack, userData }: ActivitiesProps) => {
 
           {!isLoading && !isUploading && !currentImage && (
             <>
+              <TouchableOpacity
+                className={`mb-4 flex-row items-center rounded-xl p-5 ${
+                  isDarkMode ? 'bg-gray-800' : 'bg-white'
+                } shadow-sm`}
+                onPress={captureSelfie}>
+                <View className="mr-4 h-12 w-12 items-center justify-center rounded-full bg-purple-500">
+                  <Camera stroke="#FFFFFF" width={24} height={24} />
+                </View>
+                <View className="flex-1">
+                  <Text
+                    className={`mb-1 text-lg font-semibold ${isDarkMode ? 'text-white' : 'text-gray-800'}`}>
+                    Take a Selfie
+                  </Text>
+                  <Text className={`${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>
+                    Verify your identity before meal tracking
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
               <TouchableOpacity
                 className={`mb-4 flex-row items-center rounded-xl p-5 ${
                   isDarkMode ? 'bg-gray-800' : 'bg-white'

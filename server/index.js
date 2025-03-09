@@ -1,80 +1,158 @@
-// const express = require('express');
-// const mongoose = require('mongoose');
-// const multer = require('multer');
-// const path = require('path');
-// const cors = require('cors');
-// require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const fetch = require('node-fetch');
 
-// const app = express();
-// const PORT = process.env.PORT || 3000;
+const app = express();
+const PORT = 3000;
+const API_BASE_URL = 'http://rnayd-103-27-167-96.a.free.pinggy.link/';
 
-// // Middleware
-// app.use(cors());
-// app.use(express.json());
-// app.use('./uploads', express.static(path.join(process.cwd(), 'uploads')));
+app.use(cors());
+app.use(express.json());
 
-// // Connect to MongoDB
-// console.log(process.env.MONGODB_URI);
-// mongoose
-//   .connect(process.env.MONGODB_URI)
-//   .then(() => console.log('MongoDB connected'))
-//   .catch((err) => console.error('MongoDB connection error:', err));
+// Fetch health scores
+app.get('/get-scores/', async (req, res) => {
+  try {
+    const response = await fetch(`${API_BASE_URL}get-scores/`);
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error('Error fetching health scores:', error);
+    res.status(500).json({
+      activityScore: 0,
+      dietScore: 0,
+      healthScore: 0,
+      sleepScore: 0,
+    });
+  }
+});
 
-// // Food Entry Schema
-// const foodEntrySchema = new mongoose.Schema({
-//   title: { type: String, required: true },
-//   imageUri: { type: String, required: true },
-//   timestamp: { type: Date, default: Date.now },
-//   verified: { type: Boolean, default: true },
-// });
+// Submit a meal photo for evaluation
+app.post('/evaluate-meal/', async (req, res) => {
+  try {
+    const { saved_face, test_face, meal } = req.body;
 
-// const FoodEntry = mongoose.model('FoodEntry', foodEntrySchema);
+    const response = await fetch(`${API_BASE_URL}evaluate-meal/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ saved_face, test_face, meal }),
+    });
 
-// // Configure multer for file uploads
-// const storage = multer.diskStorage({
-//   destination: (req, file, cb) => {
-//     cb(null, 'uploads/');
-//   },
-//   filename: (req, file, cb) => {
-//     cb(null, `${Date.now()}-${file.originalname}`);
-//   },
-// });
+    let authorized = await response.text();
+    isSame = JSON.parse(authorized);
+    console.log(isSame);
+    res.status(response.ok ? 200 : 500).json({ success: response.ok });
+  } catch (error) {
+    console.error('Error evaluating meal photo:', error);
+    res.status(500).json({ success: false });
+  }
+});
 
-// const upload = multer({ storage });
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on http://localhost:${PORT}`);
+});
 
-// // Routes
-// // Upload image
-// app.post('/api/upload', upload.single('file'), (req, res) => {
-//   if (!req.file) {
-//     return res.status(400).json({ error: 'No file uploaded' });
+// const http = require('http');
+// const url = require('url');
+// const fetch = require('node-fetch');
+
+// const PORT = 3000;
+// const API_BASE_URL = 'http://rnayd-103-27-167-96.a.free.pinggy.link/';
+
+// // Helper function to handle CORS headers
+// const setCorsHeaders = (res) => {
+//   res.setHeader('Access-Control-Allow-Origin', '*');
+//   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+//   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+// };
+
+// // Helper function to read request body data
+// const readRequestBody = (req) => {
+//   return new Promise((resolve, reject) => {
+//     let body = '';
+//     req.on('data', (chunk) => {
+//       body += chunk.toString();
+//     });
+//     req.on('end', () => {
+//       try {
+//         resolve(body ? JSON.parse(body) : {});
+//       } catch (error) {
+//         reject(error);
+//       }
+//     });
+//     req.on('error', (error) => {
+//       reject(error);
+//     });
+//   });
+// };
+
+// const server = http.createServer(async (req, res) => {
+//   // Set CORS headers for all responses
+//   setCorsHeaders(res);
+
+//   // Handle preflight OPTIONS requests for CORS
+//   if (req.method === 'OPTIONS') {
+//     res.writeHead(204);
+//     res.end();
+//     return;
 //   }
 
-//   const imageUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
-//   res.json({ imageUrl });
-// });
+//   const parsedUrl = url.parse(req.url, true);
+//   const pathname = parsedUrl.pathname;
 
-// // Get all food entries
-// app.get('/api/food-entries', async (req, res) => {
-//   try {
-//     const entries = await FoodEntry.find().sort({ timestamp: -1 });
-//     res.json(entries);
-//   } catch (error) {
-//     res.status(500).json({ error: 'Failed to fetch entries' });
+//   // GET endpoint to fetch health scores
+//   if (req.method === 'GET' && pathname === '/get-scores/') {
+//     try {
+//       const response = await fetch(`${API_BASE_URL}get-scores/`);
+//       const data = await response.json();
+
+//       res.writeHead(200, { 'Content-Type': 'application/json' });
+//       res.end(JSON.stringify(data));
+//     } catch (error) {
+//       console.error('Error fetching health scores:', error);
+//       res.writeHead(500, { 'Content-Type': 'application/json' });
+//       res.end(
+//         JSON.stringify({
+//           healthyDietPoints: 0,
+//           healthyActivityPoints: 0,
+//           foodPoints: 0,
+//           healthySleepPoints: 0,
+//         })
+//       );
+//     }
+//   }
+//   // POST endpoint to evaluate meal photos
+//   else if (req.method === 'POST' && pathname === '/evaluate-meal/') {
+//     try {
+//       const requestBody = await readRequestBody(req);
+//       const { savedFace, testFace, meal } = requestBody;
+
+//       const response = await fetch(`${API_BASE_URL}evaluate-meal/`, {
+//         method: 'POST',
+//         headers: {
+//           'Content-Type': 'application/json',
+//         },
+//         body: JSON.stringify({ saved_face: savedFace, test_face: testFace, meal }),
+//       });
+
+//       const success = response.ok;
+
+//       res.writeHead(success ? 200 : 500, { 'Content-Type': 'application/json' });
+//       res.end(JSON.stringify({ success }));
+//     } catch (error) {
+//       console.error('Error evaluating meal photo:', error);
+//       res.writeHead(500, { 'Content-Type': 'application/json' });
+//       res.end(JSON.stringify({ success: false }));
+//     }
+//   }
+//   // Handle invalid routes
+//   else {
+//     res.writeHead(404, { 'Content-Type': 'application/json' });
+//     res.end(JSON.stringify({ error: 'Not Found' }));
 //   }
 // });
 
-// // Create a new food entry
-// app.post('/api/food-entries', async (req, res) => {
-//   try {
-//     const newEntry = new FoodEntry(req.body);
-//     const savedEntry = await newEntry.save();
-//     res.status(201).json(savedEntry);
-//   } catch (error) {
-//     res.status(500).json({ error: 'Failed to create entry' });
-//   }
-// });
-
-// // Start server
-// app.listen(PORT, () => {
-//   console.log(`Server running on port ${PORT}`);
+// server.listen(PORT, '0.0.0.0', () => {
+//   console.log(`Server running on http://localhost:${PORT}`);
 // });

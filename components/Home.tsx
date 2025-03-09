@@ -16,6 +16,7 @@ import {
 import { Shield, Award, TrendingUp, FileText, ArrowRight, Menu, User } from 'react-native-feather';
 import ProfileDashboard from './ProfileDashboard';
 import Activities from './Activities';
+import PointsDashboard from './PointsDashboard';
 
 export interface UserData {
   name: string;
@@ -83,6 +84,13 @@ const App = () => {
         setMenuOpen(false);
       },
     },
+    {
+      title: 'Health Points',
+      onPress: () => {
+        setCurrentScreen('points');
+        setMenuOpen(false);
+      },
+    },
     { title: 'Settings', onPress: () => console.log('Settings pressed') },
   ];
 
@@ -123,6 +131,10 @@ const App = () => {
 
   if (currentScreen === 'activities' && isSignedIn) {
     return <Activities userData={userData} onBack={() => setCurrentScreen('home')} />;
+  }
+
+  if (currentScreen === 'points' && isSignedIn) {
+    return <PointsDashboard userData={userData} onBack={() => setCurrentScreen('home')} />;
   }
 
   return (
@@ -221,16 +233,17 @@ const App = () => {
                   <Text className="text-gray-600">Active Member</Text>
                 </View>
               </View>
+
               <TouchableOpacity
-                className="mb-2 rounded-lg bg-emerald-600 px-6 py-3"
-                onPress={() => console.log('View policies')}>
-                <Text className="font-semibold text-white">View My Policies</Text>
+                className="mb-2 rounded-lg bg-purple-600 px-6 py-3"
+                onPress={() => setCurrentScreen('activities')}>
+                <Text className="font-semibold text-white">Track Health Activities</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                className="rounded-lg bg-purple-600 px-6 py-3"
-                onPress={() => setCurrentScreen('activities')}>
-                <Text className="font-semibold text-white">Track Health Activities</Text>
+                className="rounded-lg bg-pink-500 px-6 py-3"
+                onPress={() => setCurrentScreen('points')}>
+                <Text className="font-semibold text-white">Go To Dashboard</Text>
               </TouchableOpacity>
             </View>
           ) : (

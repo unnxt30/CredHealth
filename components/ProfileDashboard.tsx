@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   SafeAreaView,
   ScrollView,
@@ -13,6 +13,13 @@ import {
 import { Shield, ArrowLeft, Camera, Upload, Image as ImageIcon } from 'react-native-feather';
 import { UserData } from './Home'; // Import the UserData interface
 import * as ImagePicker from 'expo-image-picker';
+import { generateS3Options } from './Activities';
+import { RNS3 } from 'react-native-aws3';
+import { XMLParser } from 'fast-xml-parser';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Storage key for profile picture
+export const PROFILE_PIC_KEY = '@health_app_profile_pic';
 
 interface ProfileDashboardProps {
   userData: UserData;
@@ -23,6 +30,36 @@ interface ProfileDashboardProps {
 const ProfileDashboard = ({ userData, onBack, onUpdateProfile }: ProfileDashboardProps) => {
   const isDarkMode = useColorScheme() === 'dark';
   const [profileImage, setProfileImage] = useState(userData.profilePic);
+
+  // Load saved profile picture on component mount
+  useEffect(() => {
+    const loadSavedProfilePic = async () => {
+      try {
+        const savedProfilePic = await AsyncStorage.getItem(PROFILE_PIC_KEY);
+        if (savedProfilePic) {
+          setProfileImage(savedProfilePic);
+          // Update the userData in the parent component if the saved pic is different
+          if (savedProfilePic !== userData.profilePic) {
+            onUpdateProfile({ ...userData, profilePic: savedProfilePic });
+          }
+        }
+      } catch (error) {
+        console.error('Error loading saved profile picture:', error);
+      }
+    };
+
+    loadSavedProfilePic();
+  }, []);
+
+  // Save profile picture to AsyncStorage
+  const saveProfilePicture = async (imageUrl: string) => {
+    try {
+      await AsyncStorage.setItem(PROFILE_PIC_KEY, imageUrl);
+      console.log('Profile picture saved to AsyncStorage');
+    } catch (error) {
+      console.error('Error saving profile picture:', error);
+    }
+  };
 
   // Request permissions and open image picker
   const pickImage = async () => {
@@ -49,6 +86,8 @@ const ProfileDashboard = ({ userData, onBack, onUpdateProfile }: ProfileDashboar
       const selectedImage = result.assets[0].uri;
       setProfileImage(selectedImage);
       onUpdateProfile({ ...userData, profilePic: selectedImage });
+      // Save to AsyncStorage
+      await saveProfilePicture(selectedImage);
       Alert.alert('Success', 'Profile picture updated successfully!');
     }
   };
@@ -72,9 +111,31 @@ const ProfileDashboard = ({ userData, onBack, onUpdateProfile }: ProfileDashboar
 
     if (!result.canceled && result.assets && result.assets.length > 0) {
       const capturedImage = result.assets[0].uri;
-      setProfileImage(capturedImage);
-      onUpdateProfile({ ...userData, profilePic: capturedImage });
-      Alert.alert('Success', 'Profile picture updated successfully!');
+      const file = {
+        uri: capturedImage,
+        name: `unnxt30_${Date.now()}.jpg`,
+        type: 'image/jpeg',
+      };
+      const s3Opts = generateS3Options('profile_pics');
+
+      try {
+        const response = await RNS3.put(file, s3Opts);
+
+        if (response.status === 201) {
+          const img = response.body.postResponse.location;
+          setProfileImage(img);
+          onUpdateProfile({ ...userData, profilePic: img });
+          // Save to AsyncStorage
+          await saveProfilePicture(img);
+          console.log(response);
+        } else {
+          console.error('Failed to upload to S3:', response);
+          Alert.alert('Error', 'Failed to upload image to server');
+        }
+      } catch (error) {
+        console.error('Error uploading to S3:', error);
+        Alert.alert('Error', 'Failed to upload image to server');
+      }
     }
   };
 

@@ -16,7 +16,8 @@
           "photosPermission": "The app accesses your photos to let you share them with your friends.",
           "cameraPermission": "The app accesses your camera to let you take profile pictures."
         }
-      ]
+      ],
+      "expo-build-properties"
     ],
     "orientation": "portrait",
     "icon": "./assets/icon.png",

@@ -51,19 +51,14 @@ const App = () => {
       icon: <Shield stroke="#FFFFFF" width={24} height={24} />,
       color: 'bg-purple-500',
       title: 'Secure Health Data',
-      description: 'Health data verification via oracle and immutable storage on blockchain',
-    },
-    {
-      icon: <TrendingUp stroke="#FFFFFF" width={24} height={24} />,
-      color: 'bg-pink-500',
-      title: 'Automated Payouts',
-      description: 'Trigger claim settlements based on real-time health data',
+      description: 'Health data verification via google-fit and immutable storage on blockchain',
     },
     {
       icon: <Award stroke="#FFFFFF" width={24} height={24} />,
       color: 'bg-amber-500',
       title: 'Policy NFTs',
-      description: 'Generate NFTs representing policies with real-time health status updates',
+      description:
+        'Generate smart-contracts representing policies with real-time health status updates',
     },
   ];
 
@@ -98,7 +93,6 @@ const App = () => {
         setMenuOpen(false);
       },
     },
-    { title: 'Settings', onPress: () => console.log('Settings pressed') },
   ];
 
   const toggleMenu = () => {

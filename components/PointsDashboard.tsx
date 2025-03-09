@@ -14,6 +14,9 @@ import {
 import { ArrowLeft, Award, Clipboard, Activity, Coffee, Info } from 'react-native-feather';
 import Svg, { Circle, G, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { fetchHealthScores, HealthScores } from '../services/healthScoreApi';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+export const HEALTH_SCORE_KEY = '@health_score';
 
 interface PointsDashboardProps {
   userData: {
@@ -47,6 +50,10 @@ const PointsDashboard: React.FC<PointsDashboardProps> = ({ userData, onBack }) =
         const scores = await fetchHealthScores();
         console.log(scores);
         setPointsData(scores);
+        if (scores.healthScore) {
+          await AsyncStorage.setItem(HEALTH_SCORE_KEY, scores.healthScore.toString());
+          console.log('Health score saved: ', scores.healthScore);
+        }
         setError(null);
       } catch (err) {
         setError('Failed to load health scores. Please try again later.');
@@ -164,6 +171,10 @@ const PointsDashboard: React.FC<PointsDashboardProps> = ({ userData, onBack }) =
       setIsLoading(true);
       const scores = await fetchHealthScores();
       setPointsData(scores);
+
+      if (scores.healthScore) {
+        await AsyncStorage.setItem(HEALTH_SCORE_KEY, scores.healthScore.toString());
+      }
       setError(null);
     } catch (err) {
       setError('Failed to refresh health scores. Please try again later.');

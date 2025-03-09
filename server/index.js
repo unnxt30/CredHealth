@@ -4,7 +4,8 @@ const fetch = require('node-fetch');
 
 const app = express();
 const PORT = 3000;
-const API_BASE_URL = 'http://rnayd-103-27-167-96.a.free.pinggy.link/';
+const API_BASE_URL = 'http://rnzok-103-27-167-96.a.free.pinggy.link/';
+const API_BASE_URL_BLOCK = 'http://rngsw-103-27-167-56.a.free.pinggy.link/';
 
 app.use(cors());
 app.use(express.json());
@@ -26,7 +27,6 @@ app.get('/get-scores/', async (req, res) => {
   }
 });
 
-// Submit a meal photo for evaluation
 app.post('/evaluate-meal/', async (req, res) => {
   try {
     const { saved_face, test_face, meal } = req.body;
@@ -39,15 +39,100 @@ app.post('/evaluate-meal/', async (req, res) => {
       body: JSON.stringify({ saved_face, test_face, meal }),
     });
 
-    let authorized = await response.text();
-    isSame = JSON.parse(authorized);
-    console.log(isSame);
-    res.status(response.ok ? 200 : 500).json({ success: response.ok });
+    const authorized = await response.json();
+    return res.status(response.ok ? 200 : 500).json({
+      success: response.ok,
+      data: authorized,
+    });
   } catch (error) {
     console.error('Error evaluating meal photo:', error);
-    res.status(500).json({ success: false });
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
   }
 });
+
+app.post('/createPolicy', async (req, res) => {
+  try {
+    const { policyId, userId, userWalletAddress, initialHealthScore, coverageDuration } = req.body;
+
+    console.log('Received policy creation request:', {
+      policyId,
+      userId,
+      userWalletAddress,
+      initialHealthScore,
+      coverageDuration,
+    });
+
+    const response = await fetch(`${API_BASE_URL_BLOCK}createPolicy/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        policyId,
+        userId,
+        userWalletAddress,
+        initialHealthScore,
+        coverageDuration,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Backend API error: ${response.status} - ${errorText}`);
+      return res.status(response.status).json({
+        success: false,
+        message: 'Error from blockchain service',
+        error: errorText,
+      });
+    }
+
+    const data = await response.json();
+    console.log('Policy created successfully:', data);
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    console.error('Error creating policy:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error while creating policy',
+      error: error.message,
+    });
+  }
+});
+
+app.get('/getPolicyDetails/:policyId', async (req, res) => {
+  try {
+    const { policyId } = req.params;
+    console.log(`Fetching details for policy: ${policyId}`);
+
+    const response = await fetch(`${API_BASE_URL_BLOCK}getPolicyDetails/${policyId}`);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`API error: ${response.status} - ${errorText}`);
+      return res.status(response.status).json({
+        success: false,
+        message: 'Error fetching policy details from blockchain service',
+        error: errorText,
+      });
+    }
+
+    const data = await response.json();
+    console.log('Policy details retrieved successfully:', data);
+    return res.status(200).json({ success: true, data });
+  } catch (error) {
+    console.error('Error fetching policy details:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Server error while fetching policy details',
+      error: error.message,
+    });
+  }
+});
+
+app.post('/updateHealthPoints');
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on http://localhost:${PORT}`);

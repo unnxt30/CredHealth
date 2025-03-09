@@ -17,6 +17,7 @@ import { Shield, Award, TrendingUp, FileText, ArrowRight, Menu, User } from 'rea
 import ProfileDashboard from './ProfileDashboard';
 import Activities from './Activities';
 import PointsDashboard from './PointsDashboard';
+import BlockchainPolicyDashboard from './PolicyDashboard';
 
 export interface UserData {
   name: string;
@@ -68,7 +69,13 @@ const App = () => {
 
   // Menu options
   const menuOptions = [
-    { title: 'My Policies', onPress: () => console.log('My Policies pressed') },
+    {
+      title: 'My Policies',
+      onPress: () => {
+        setMenuOpen(false);
+        setCurrentScreen('policy');
+      },
+    },
     { title: 'Claims', onPress: () => console.log('Claims pressed') },
     {
       title: 'Profile',
@@ -135,6 +142,10 @@ const App = () => {
 
   if (currentScreen === 'points' && isSignedIn) {
     return <PointsDashboard userData={userData} onBack={() => setCurrentScreen('home')} />;
+  }
+
+  if (currentScreen === 'policy' && isSignedIn) {
+    return <BlockchainPolicyDashboard onBack={() => setCurrentScreen('home')} />;
   }
 
   return (

@@ -248,10 +248,10 @@ const Activities = ({ onBack, userData }: ActivitiesProps) => {
         });
 
         const result = await evaluateMealPhoto(savedFaceUrl, testFaceUrl, meal);
-        console.log('Evaluation result:', result);
+        console.log('Evaluation result:', result.data.verified);
 
         if (result.success) {
-          if (!result.verified) {
+          if (!result.data.verified) {
             // Show alert for failed verification
             Alert.alert(
               'Verification Failed',
